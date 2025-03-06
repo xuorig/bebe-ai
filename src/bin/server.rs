@@ -5,7 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
-use bebe_ai::{embedding, llm};
+use bebe_ai::{
+    embedding::{self, similarity::SimilarityFinder},
+    llm,
+};
 use itertools::Itertools;
 use tower_http::services::ServeDir;
 
@@ -19,8 +22,7 @@ struct AppState {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    tracing::info!("Loading embeddings from disk");
-    // fetch embeddings
+
     let embeddings_json = std::fs::read("embedded.json").unwrap();
     let embeddings: Vec<
         bebe_ai::embedding::EmbeddedChunk<bebe_ai::document::mv::MieuxVivreMetadata>,
@@ -29,7 +31,6 @@ async fn main() {
 
     let gemini_key = std::env::var("GEMINI_API_KEY").unwrap();
 
-    // build our application with a single route
     let serve_dir = ServeDir::new("public");
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
@@ -70,32 +71,14 @@ async fn handle_chat(
         .await
         .unwrap();
 
-    let mut similarities = state
-        .embeddings
-        .iter()
-        .map(|embedded| {
-            let similarity = cosine_similarity(&embedding, &embedded.embedding);
-            (similarity, &embedded.chunk)
-        })
-        .collect::<Vec<_>>();
-
-    tracing::info!("Starting K Nearest Neighbors search using cosine similarity");
-
-    let sorted = similarities.as_mut_slice();
-    sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-
-    // print top 5 results
-    let top5 = sorted
-        .iter()
-        .take(5)
-        .map(|(_, chunk)| *chunk)
-        .collect::<Vec<_>>();
+    let similarity = embedding::similarity::naive::NaiveSimilarity {};
+    let top5 = similarity.find_k_similar(&embedding, state.embeddings.as_ref(), 5);
 
     tracing::info!("Found top 5, generating context.");
 
     let context_for_prompt = top5
         .iter()
-        .map(|chunk| format!("Context from mieux vivre: {}\n\n", chunk.text))
+        .map(|chunk| format!("Context from mieux vivre: {}\n\n", chunk.chunk.text))
         .collect::<String>();
 
     let prompt = format!(
@@ -111,10 +94,10 @@ async fn handle_chat(
         .map(|chunk| {
             format!(
                 "Titre: {}\nSection: {}\nSous-section: {}\nURL: {}\n\n",
-                chunk.metadata.title,
-                chunk.metadata.section,
-                chunk.metadata.subsection,
-                chunk.metadata.url
+                chunk.chunk.metadata.title,
+                chunk.chunk.metadata.section,
+                chunk.chunk.metadata.subsection,
+                chunk.chunk.metadata.url
             )
         })
         .unique()
@@ -123,11 +106,4 @@ async fn handle_chat(
     let answer_with_sources = format!("{}\n\nSources:\n\n{}", answer, context_metadata);
 
     answer_with_sources
-}
-
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    let dot_product = a.iter().zip(b.iter()).map(|(a, b)| a * b).sum::<f32>();
-    let norm_a = a.iter().map(|a| a * a).sum::<f32>().sqrt();
-    let norm_b = b.iter().map(|b| b * b).sum::<f32>().sqrt();
-    dot_product / (norm_a * norm_b)
 }

@@ -3,31 +3,30 @@ use serde_json::json;
 
 use crate::document::Chunk;
 
-pub async fn generate_embeddings<M>(chunks: Vec<Chunk<M>>) -> Vec<EmbeddedChunk<M>> {
-    let client = reqwest::Client::new();
+pub mod similarity;
 
-    let mut embeddings = Vec::new();
-
-    let gemini_key = std::env::var("GEMINI_API_KEY").unwrap();
-
-    let len = chunks.len();
-
-    for (id, chunk) in chunks.into_iter().enumerate() {
-        tracing::info!("Generating embedding for chunk {} of {}", id + 1, len);
-        let embedding = generate_embedding(&client, &chunk.text, &gemini_key).await.unwrap();
-        embeddings.push(EmbeddedChunk {
-            embedding,
-            chunk
-        });
-    }
-
-    embeddings
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddedChunk<M> {
     pub embedding: Vec<f32>,
-    pub chunk: Chunk<M>
+    pub chunk: Chunk<M>,
+}
+
+pub async fn get_embedded_chunks<M>(chunks: Vec<Chunk<M>>) -> Vec<EmbeddedChunk<M>> {
+    let client = reqwest::Client::new();
+    let gemini_key = std::env::var("GEMINI_API_KEY").unwrap();
+
+    let embeddings = generate_batch_embeddings(&client, &chunks, &gemini_key)
+        .await
+        .unwrap();
+
+    chunks
+        .into_iter()
+        .zip(embeddings)
+        .map(|(chunk, embedding)| EmbeddedChunk {
+            embedding: embedding.values,
+            chunk: chunk,
+        })
+        .collect()
 }
 
 pub async fn generate_embedding(
@@ -55,61 +54,76 @@ pub async fn generate_embedding(
 
 async fn generate_batch_embeddings<M>(
     client: &reqwest::Client,
-    chunks: Vec<Chunk<M>>,
+    chunks: &Vec<Chunk<M>>,
     gemini_key: &str,
 ) -> Result<Vec<GeminiEmbedding>, reqwest::Error> {
-    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={}", gemini_key);
-    let payload = GeminiBatchEmbeddingRequest {
-        requests: chunks.into_iter().map(|chunk| {
-            BatchEmbeddingRequest {
-                model: "models/text-embedding-004".to_string(),
-                content: EmbeddingContent {
-                    parts: vec![
-                        EmbeddingPart {
-                            text: chunk.text
-                        }
-                    ]
-                }
-            }
-        }).collect()
-    };
-    let response = client.post(url).json(&payload).send().await?;
-    let response: GeminiBatchEmbeddingResponse = response.json().await?;
-    Ok(response.embeddings)
+    let batches: Vec<&[Chunk<M>]> = chunks.chunks(100).collect::<Vec<_>>();
+
+    let mut embeddings = vec![];
+
+    for (id, batch) in batches.iter().enumerate() {
+        tracing::info!(
+            "Generating embeddings for batch {} of {}",
+            id + 1,
+            batches.len()
+        );
+
+        let url = format!("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key={}", gemini_key);
+
+        let payload = GeminiBatchEmbeddingRequest {
+            requests: batch
+                .iter()
+                .map(|chunk| BatchEmbeddingRequest {
+                    model: "models/text-embedding-004".to_string(),
+                    content: EmbeddingContent {
+                        parts: vec![EmbeddingPart {
+                            text: chunk.text.clone(),
+                        }],
+                    },
+                })
+                .collect(),
+        };
+
+        let response = client.post(url).json(&payload).send().await?;
+        let response: GeminiBatchEmbeddingResponse = response.json().await?;
+        embeddings.extend(response.embeddings);
+    }
+
+    Ok(embeddings)
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiBatchEmbeddingResponse {
-    embeddings: Vec<GeminiEmbedding>
+    embeddings: Vec<GeminiEmbedding>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GeminiBatchEmbeddingRequest {
-    requests: Vec<BatchEmbeddingRequest>
+    requests: Vec<BatchEmbeddingRequest>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BatchEmbeddingRequest {
     model: String,
-    content: EmbeddingContent
+    content: EmbeddingContent,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EmbeddingContent {
-    parts: Vec<EmbeddingPart>
+    parts: Vec<EmbeddingPart>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EmbeddingPart {
-    text: String
+    text: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiEmbeddingResponse {
-    embedding: GeminiEmbedding
+    embedding: GeminiEmbedding,
 }
 
 #[derive(Debug, Deserialize)]
 struct GeminiEmbedding {
-    values: Vec<f32>
+    values: Vec<f32>,
 }

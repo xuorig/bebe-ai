@@ -7,10 +7,10 @@ pub trait DocumentFetcher<M> {
     async fn fetch(&self) -> Result<Vec<Chunk<M>>, Box<dyn std::error::Error>>;
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk<M> {
     pub text: String,
-    pub metadata: M
+    pub metadata: M,
 }
 
 // tests
@@ -22,12 +22,10 @@ mod tests {
 
     impl DocumentFetcher<()> for SimpleFetcher {
         async fn fetch(&self) -> Result<Vec<Chunk<()>>, Box<dyn std::error::Error>> {
-            Ok(vec![
-                Chunk {
-                    text: "Hello, world!".to_string(),
-                    metadata: ()
-                }
-            ])
+            Ok(vec![Chunk {
+                text: "Hello, world!".to_string(),
+                metadata: (),
+            }])
         }
     }
 

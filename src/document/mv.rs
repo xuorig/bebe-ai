@@ -65,20 +65,23 @@ impl MieuxVivreFetcher {
 
             // When we find a UL, we add it to the previous chunk.
 
-            if element.value().name() == "h2" || element.value().name() == "h3" || element.value().name() == "h4" {
+            if element.value().name() == "h2"
+                || element.value().name() == "h3"
+                || element.value().name() == "h4"
+            {
                 current_heading = Some(element.text().collect::<String>());
             } else if element.value().name() == "p" {
                 let text = element.text().collect::<String>();
-                    chunks.push(Chunk {
-                        text,
-                        metadata: MieuxVivreMetadata {
-                            title: title.clone(),
-                            section: section.to_string(),
-                            subsection: subsection.to_string(),
-                            heading: current_heading.clone(),
-                            url: url.to_string(),
-                        },
-                    });
+                chunks.push(Chunk {
+                    text,
+                    metadata: MieuxVivreMetadata {
+                        title: title.clone(),
+                        section: section.to_string(),
+                        subsection: subsection.to_string(),
+                        heading: current_heading.clone(),
+                        url: url.to_string(),
+                    },
+                });
             } else if element.value().name() == "div" || element.value().name() == "article" {
                 current_heading = None;
                 let text = element.text().collect::<String>();
@@ -242,9 +245,9 @@ impl DocumentFetcher<MieuxVivreMetadata> for MieuxVivreFetcher {
 
         while let Some(res) = set.join_next().await {
             let page_chunks = res.unwrap().unwrap();
-            let filtered = page_chunks.into_iter().filter(
-                |chunk| chunk.text.len() > TEXT_MIN_LENGTH
-            );
+            let filtered = page_chunks
+                .into_iter()
+                .filter(|chunk| chunk.text.len() > TEXT_MIN_LENGTH);
             chunks.extend(filtered);
         }
 

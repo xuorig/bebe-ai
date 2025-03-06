@@ -1,4 +1,8 @@
-use bebe_ai::{document::{mv::MieuxVivreMetadata, Chunk}, embedding::{self, EmbeddedChunk}, llm};
+use bebe_ai::{
+    document::{mv::MieuxVivreMetadata, Chunk},
+    embedding::{self, EmbeddedChunk},
+    llm,
+};
 use itertools::Itertools;
 
 #[tokio::main]
@@ -8,7 +12,9 @@ async fn main() {
     tracing::info!("Loading embeddings from disk");
     // fetch embeddings
     let embeddings_json = std::fs::read("embedded.json").unwrap();
-    let embeddings: Vec<bebe_ai::embedding::EmbeddedChunk<bebe_ai::document::mv::MieuxVivreMetadata>> = serde_json::from_slice(&embeddings_json).unwrap();
+    let embeddings: Vec<
+        bebe_ai::embedding::EmbeddedChunk<bebe_ai::document::mv::MieuxVivreMetadata>,
+    > = serde_json::from_slice(&embeddings_json).unwrap();
 
     tracing::info!("Loaded {} embeddings", embeddings.len());
 
@@ -30,16 +36,20 @@ async fn main() {
 
     tracing::info!("Using search query: {}", query);
 
-
     tracing::info!("Generating embedding vector for serach query");
     // generate embedding for query
     let client = reqwest::Client::new();
-    let embedding = embedding::generate_embedding(&client, &query, &gemini_key).await.unwrap();
+    let embedding = embedding::generate_embedding(&client, &query, &gemini_key)
+        .await
+        .unwrap();
 
-    let mut similarities = embeddings.iter().map(|embedded| {
-        let similarity = cosine_similarity(&embedding, &embedded.embedding);
-        (similarity, &embedded.chunk)
-    }).collect::<Vec<_>>();
+    let mut similarities = embeddings
+        .iter()
+        .map(|embedded| {
+            let similarity = cosine_similarity(&embedding, &embedded.embedding);
+            (similarity, &embedded.chunk)
+        })
+        .collect::<Vec<_>>();
 
     tracing::info!("Starting K Nearest Neighbors search using cosine similarity");
 
@@ -47,15 +57,18 @@ async fn main() {
     sorted.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
 
     // print top 5 results
-    let top5 = sorted.iter().take(5).map(|(similarity, chunk)| {
-        *chunk
-    }).collect::<Vec<_>>();
+    let top5 = sorted
+        .iter()
+        .take(5)
+        .map(|(similarity, chunk)| *chunk)
+        .collect::<Vec<_>>();
 
     tracing::info!("Found top 5, generating context.");
 
-    let context_for_prompt = top5.iter().map(|chunk| {
-        format!("Context from mieux vivre: {}\n\n", chunk.text)
-    }).collect::<String>();
+    let context_for_prompt = top5
+        .iter()
+        .map(|chunk| format!("Context from mieux vivre: {}\n\n", chunk.text))
+        .collect::<String>();
 
     let prompt = format!(
         "Using the following context from mieux vivre:\n\n{}\n\nWhat is the answer to this user query: {}",
@@ -65,15 +78,24 @@ async fn main() {
 
     let answer = llm::chat(&gemini_key, &prompt).await.unwrap();
 
-    let context_metadata = top5.iter().map(|chunk| {
-        format!("Title: {}\nSection: {}\nSubsection: {}\nURL: {}\n\n", chunk.metadata.title, chunk.metadata.section, chunk.metadata.subsection, chunk.metadata.url)
-    }).unique().collect::<String>();
+    let context_metadata = top5
+        .iter()
+        .map(|chunk| {
+            format!(
+                "Title: {}\nSection: {}\nSubsection: {}\nURL: {}\n\n",
+                chunk.metadata.title,
+                chunk.metadata.section,
+                chunk.metadata.subsection,
+                chunk.metadata.url
+            )
+        })
+        .unique()
+        .collect::<String>();
 
     let answer_with_sources = format!("{}\n\nSources:\n\n{}", answer, context_metadata);
 
     println!("\n\n");
     println!("{}", answer_with_sources);
-
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
