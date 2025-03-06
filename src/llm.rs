@@ -40,7 +40,7 @@ impl GeminiRequest {
         GeminiRequest {
             system_instruction: GeminiSystemInstruction {
                 parts: vec![GeminiPart {
-                    text: "You are an helpful AI assistant that answers questions about newborn and pregnancy health. Only use information provided in the prompt, never use external knowledge. Feel free to quote the provided context always. Always answer in the language the question is in.".to_string(),
+                    text: "You are an helpful AI assistant that helps with newborn and pregnancy knowledge. Using the context provided from the mieux vivre guide, help answering the user's question. Answer in the language the question is in.".to_string(),
                 }]
             },
             contents: parts,

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BebeAI</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        #chat-box { width: 100%; height: 300px; border: 1px solid #ccc; overflow-y: auto; padding: 10px; white-space: pre-wrap; }
+        #user-input { width: 80%; padding: 10px; }
+        #send-btn { padding: 10px; cursor: pointer; }
+        .user-message { color: blue; }
+        .bot-message { color: green; }
+    </style>
+</head>
+<body>
+    <h2>BebeAI</h2>
+    <div id="chat-box"></div>
+    <form id="chat-form">
+        <input type="text" id="user-input" placeholder="Tapez votre question...">
+        <button type="submit">Demander a BebeAI</button>
+    </form>
+
+    <script>
+        document.getElementById("chat-form").addEventListener("submit", async function(event) {
+            event.preventDefault(); // Prevent page reload
+            
+            const userInput = document.getElementById("user-input").value;
+            if (!userInput) return;
+            
+            const chatBox = document.getElementById("chat-box");
+            
+            // Display user message
+            const userMessage = document.createElement("div");
+            userMessage.className = "user-message";
+            userMessage.textContent = "Votre Question: " + userInput;
+            chatBox.appendChild(userMessage);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            
+            try {
+                const response = await fetch(`chat?query=${encodeURIComponent(userInput)}`);
+                const data = await response.text();
+                
+                const botMessage = document.createElement("div");
+                botMessage.className = "bot-message";
+                botMessage.innerHTML = "BebeAI: " + data.replace(/\n/g, "<br>");
+                chatBox.appendChild(botMessage);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            } catch (error) {
+                console.error("Error fetching response:", error);
+            }
+            
+            document.getElementById("user-input").value = "";
+        });
+    </script>
+</body>
+</html>
